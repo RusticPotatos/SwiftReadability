@@ -12,6 +12,31 @@ import SwiftSoup
 ///
 /// This payload is designed to be rendered directly (HTML) or indexed (plain text).
 public struct ReadabilityData: Sendable {
+    public init(
+        title: String,
+        description: String?,
+        topImage: String?,
+        text: String?,
+        content: String?,
+        topVideo: String?,
+        keywords: [String]?,
+        datePublished: String?,
+        author: String?,
+        estimatedReadingTime: Int?,
+        comments: [(author: String, date: String, content: String)]?
+    ) {
+        self.title = title
+        self.description = description
+        self.topImage = topImage
+        self.text = text
+        self.content = content
+        self.topVideo = topVideo
+        self.keywords = keywords
+        self.datePublished = datePublished
+        self.author = author
+        self.estimatedReadingTime = estimatedReadingTime
+        self.comments = comments
+    }
     /// Best-effort title for the document.
     public let title: String
     /// Metadata description or a fallback excerpt.
