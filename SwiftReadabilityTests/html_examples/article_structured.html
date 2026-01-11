@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    "headline": "Structured Headline",
+    "description": "Structured description body used for testing JSON-LD extraction.",
+    "author": { "@type": "Person", "name": "Jane Doe" },
+    "datePublished": "2024-01-02T03:04:05Z",
+    "image": ["https://example.com/image.jpg"],
+    "keywords": ["alpha", "beta", "gamma"]
+  }
+  </script>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Structured Headline</h1>
+      <p>This fixture ensures JSON-LD is preferred when present.</p>
+      <p>It includes an author, description, keywords, and a publish date.</p>
+      <p>Content should be long enough to be considered primary article text.</p>
+      <p>Extra sentences keep the content above minimal length thresholds.</p>
+    </article>
+  </main>
+</body>
+</html>
