@@ -210,6 +210,36 @@ final class ReadabilityFixtureTests: XCTestCase {
         XCTAssertFalse(text.contains("Advertisement"))
     }
 
+    func testReadabilityDataPublicInitializer() {
+        let data = ReadabilityData(
+            title: "Sample Title",
+            description: "Sample description",
+            topImage: "https://example.com/image.jpg",
+            text: "Sample text",
+            content: "<p>Sample text</p>",
+            topVideo: nil,
+            keywords: ["alpha", "beta"],
+            datePublished: "2025-01-01",
+            author: "Jane Doe",
+            estimatedReadingTime: 1,
+            comments: [
+                (author: "Alice", date: "2025-01-01T00:00:00Z", content: "Nice article.")
+            ]
+        )
+
+        XCTAssertEqual(data.title, "Sample Title")
+        XCTAssertEqual(data.description, "Sample description")
+        XCTAssertEqual(data.topImage, "https://example.com/image.jpg")
+        XCTAssertEqual(data.text, "Sample text")
+        XCTAssertEqual(data.content, "<p>Sample text</p>")
+        XCTAssertNil(data.topVideo)
+        XCTAssertEqual(data.keywords ?? [], ["alpha", "beta"])
+        XCTAssertEqual(data.datePublished, "2025-01-01")
+        XCTAssertEqual(data.author, "Jane Doe")
+        XCTAssertEqual(data.estimatedReadingTime, 1)
+        XCTAssertEqual(data.comments?.count, 1)
+    }
+
     private static func loadFixture(named name: String) throws -> String {
         if let url = Bundle(for: Self.self).url(forResource: name, withExtension: "html", subdirectory: "html_examples") {
             return try String(contentsOf: url, encoding: .utf8)
