@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: swift-test
+        name: swift test
+        entry: sh -c 'swift test >/tmp/swift-test.log 2>&1 || { echo "swift test failed (see /tmp/swift-test.log)"; exit 1; }'
+        language: system
+        pass_filenames: false
