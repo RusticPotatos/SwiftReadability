@@ -146,10 +146,16 @@ public class Readability {
         "meta[name='DC.date']",
         "meta[itemprop='datePublished']"
     ]
+    
+    // MARK: - Cleanup Rule Engine
+    private struct CleanupRule {
+        let name: String
+        let apply: (Element) throws -> Void
+    }
 
     // Updated unwantedSelectors to include many of Firefox’s unlikely candidates plus common overlays.
     private let unwantedSelectors = """
-    header, nav, footer, aside, .advertisement, .sponsored, .subscribe, .related, .breadcrumbs, .combx, .community, .cover-wrap, .disqus, .extra, .gdpr, .legends, .menu, .remark, .replies, .rss, .shoutbox, .sidebar, .skyscraper, .social, .sponsor, .supplemental, .ad-break, .agegate, .pagination, .pager, .popup, .yom-remote, .newsletter, .cookie, .cookie-banner, .modal, .overlay, .promo, .trending, .signup, .cta, .outbrain, .taboola, [data-component='header'], [data-component='footer']
+    header, nav, footer, aside, .advertisement, .sponsored, .subscribe, .related, .breadcrumbs, .combx, .community, .cover-wrap, .disqus, .extra, .gdpr, .legends, .menu, .remark, .replies, .rss, .shoutbox, .sidebar, .skyscraper, .social, .sponsor, .supplemental, .ad-break, .agegate, .pagination, .pager, .popup, .yom-remote, .newsletter, .cookie, .cookie-banner, .modal, .overlay, .promo, .trending, .signup, .cta, .outbrain, .taboola, .popular-box, .trending-bar-container, [data-mrf-recirculation], [data-component='header'], [data-component='footer']
     """
     
     // MARK: - Initialization
@@ -455,6 +461,29 @@ public class Readability {
     
     /// Remove obvious share/utility noise from the merged article content.
     private func stripShareAndNoise(from root: Element) throws {
+        for rule in buildCleanupRules() {
+            do {
+                try rule.apply(root)
+            } catch {
+                if verboseLogging {
+                    logger("Readability cleanup rule failed (\(rule.name)): \(error)")
+                }
+                throw error
+            }
+        }
+    }
+    
+    private func buildCleanupRules() -> [CleanupRule] {
+        [
+            CleanupRule(name: "knownRecirculationSelectors", apply: removeKnownRecirculationSelectors(in:)),
+            CleanupRule(name: "shareAndCommentElements", apply: removeShareAndCommentElements(in:)),
+            CleanupRule(name: "highLinkDensityUtilityBlocks", apply: removeHighLinkDensityUtilityBlocks(in:)),
+            CleanupRule(name: "noiseMarkers", apply: removeNoiseMarkers(in:)),
+            CleanupRule(name: "postArticleTailTrim", apply: trimLikelyPostArticleContent(in:))
+        ]
+    }
+    
+    private func removeShareAndCommentElements(in root: Element) throws {
         let allElements = try root.select("*")
         for el in allElements.array().reversed() {
             if try isShareOrCommentElement(el) {
@@ -463,8 +492,11 @@ public class Readability {
         }
         let shareButtons = try root.select("[aria-label*='share'], [aria-label*='Share']")
         try shareButtons.remove()
-        try removeHighLinkDensityUtilityBlocks(in: root)
-        try removeNoiseMarkers(in: root)
+    }
+
+    private func removeKnownRecirculationSelectors(in root: Element) throws {
+        let selectors = ".popular-box, .popular-box-slice, .trending, .trending__wrapper, .trending-bar-container, #slice-container-popularBox, #slice-container-trendingbar, [data-mrf-recirculation], [data-testid='trending-item']"
+        try root.select(selectors).remove()
     }
 
     /// Removes blocks that are likely nav/related lists based on high link density and low text content.
@@ -477,6 +509,10 @@ public class Readability {
             let density = try computeLinkDensity(for: el)
             let linkCount = try el.select("a").size()
             let lower = text.lowercased()
+            if try isLikelyRecirculationElement(el) && !containsLikelyArticleText(lower) {
+                try el.remove()
+                continue
+            }
             // Remove obvious ads/noise labels.
             if textLength < 80 && ["advertisement", "sponsored", "sponsored content", "ad"].contains(lower.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 try el.remove()
@@ -488,8 +524,13 @@ public class Readability {
                 continue
             }
             // Remove blocks labelled as recommendations/related if moderately link-heavy.
-            let hasNoiseKeyword = lower.contains("recommended") || lower.contains("related") || lower.contains("more stories") || lower.contains("read more") || lower.contains("you may also like")
+            let hasNoiseKeyword = containsNoiseKeyword(lower)
             if hasNoiseKeyword && density > 0.3 && textLength < 800 {
+                try el.remove()
+                continue
+            }
+            // Remove short utility clusters that are very link-dense and not narrative.
+            if density > 0.75 && textLength < 220 && linkCount >= 3 && !containsLikelyArticleText(lower) {
                 try el.remove()
             }
         }
@@ -498,27 +539,106 @@ public class Readability {
     /// Removes headings or small paragraphs that are obvious noise markers.
     private func removeNoiseMarkers(in root: Element) throws {
         let selectors = "h1, h2, h3, h4, h5, h6, p, div"
-        let noiseTerms = ["advertisement", "recommended", "recommended stories", "related stories", "more stories", "sponsored"]
         let elements = try root.select(selectors).array()
         for el in elements.reversed() {
             let text = try el.text().trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if text.isEmpty { continue }
-            if noiseTerms.contains(text) || noiseTerms.contains(where: { text.hasPrefix($0) }) {
+            if isMarkerNoiseText(text) {
                 // Remove the marker itself.
-                try el.remove()
                 // Also remove an immediate following list/section that is mostly links (common for "recommended" blocks).
                 if let next = try el.nextElementSibling() {
                     let tag = next.tagName().lowercased()
                     if tag == "ul" || tag == "ol" || tag == "section" || tag == "div" {
                         let density = (try? computeLinkDensity(for: next)) ?? 0.0
                         let textLength = (try? next.text().count) ?? 0
-                        if density > 0.4 && textLength < 800 {
+                        let nextText = ((try? next.text()) ?? "").lowercased()
+                        if density > 0.4 && textLength < 800 && !containsLikelyArticleText(nextText) {
                             try next.remove()
                         }
                     }
                 }
+                // If marker sits inside a utility wrapper, remove wrapper as well.
+                if let parent = el.parent() {
+                    let parentText = ((try? parent.text()) ?? "").lowercased()
+                    let parentDensity = (try? computeLinkDensity(for: parent)) ?? 0
+                    if parentDensity > 0.45 && parentText.count < 1000 && !containsLikelyArticleText(parentText) {
+                        try parent.remove()
+                        continue
+                    }
+                }
+                try el.remove()
             }
         }
+    }
+
+    /// Final pass to trim likely post-article sections from the bottom of extracted content.
+    private func trimLikelyPostArticleContent(in root: Element) throws {
+        let blocks = root.children().array()
+        guard blocks.count > 2 else { return }
+
+        var trimStart: Int?
+        for (index, block) in blocks.enumerated() where index > 0 {
+            let text = (try? block.text())?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if text.isEmpty { continue }
+            let lower = text.lowercased()
+            let density = (try? computeLinkDensity(for: block)) ?? 0
+            let linkCount = (try? block.select("a").size()) ?? 0
+            let markerCandidate = containsNoiseKeyword(lower) || isMarkerNoiseText(lower)
+            let utilityCandidate = density > 0.6 && text.count < 900 && linkCount >= 4
+            let shortLinkCluster = density > 0.7 && text.count < 260 && linkCount >= 3
+            let shouldTrim = markerCandidate || utilityCandidate || shortLinkCluster
+            if shouldTrim && !containsLikelyArticleText(lower) {
+                trimStart = index
+                break
+            }
+        }
+
+        guard let start = trimStart else { return }
+        for idx in stride(from: blocks.count - 1, through: start, by: -1) {
+            try blocks[idx].remove()
+        }
+    }
+
+    private func containsNoiseKeyword(_ text: String) -> Bool {
+        let terms = [
+            "recommended", "recommended stories", "related", "related stories", "more stories",
+            "read more", "you may also like", "you might also like", "sponsored", "sponsored content",
+            "advertisement", "newsletter", "sign up", "signup", "subscribe", "popular stories",
+            "latest articles", "latest stories", "latest news", "latest posts", "recent articles",
+            "more from", "from around the web", "trending now", "trending", "popular", "top stories"
+        ]
+        return terms.contains { text.contains($0) }
+    }
+
+    private func isMarkerNoiseText(_ text: String) -> Bool {
+        let markerTerms = [
+            "advertisement", "recommended", "recommended stories", "related stories", "related",
+            "more stories", "sponsored", "read more", "newsletter", "subscribe", "sign up",
+            "latest articles", "latest stories", "latest news", "latest posts", "recent articles",
+            "top stories", "trending now", "trending", "popular"
+        ]
+        return markerTerms.contains(text) || markerTerms.contains { text.hasPrefix($0 + ":") }
+    }
+
+    private func isLikelyRecirculationElement(_ element: Element) throws -> Bool {
+        let classAndId = ((try? element.className()) ?? "") + " " + element.id()
+        let lower = classAndId.lowercased()
+        let attrs = ((try? element.attr("data-mrf-recirculation")) ?? "") + " " + ((try? element.attr("data-testid")) ?? "")
+        let lowerAttrs = attrs.lowercased()
+        if lower.isEmpty && lowerAttrs.isEmpty { return false }
+        let tokens = [
+            "related", "recommended", "recirculation", "latest", "top-stories", "topstories",
+            "trending", "read-more", "readmore", "more-from", "morefrom", "popular",
+            "newsletter", "subscribe", "promo", "outbrain", "taboola"
+        ]
+        return tokens.contains(where: { lower.contains($0) || lowerAttrs.contains($0) })
+    }
+
+    private func containsLikelyArticleText(_ text: String) -> Bool {
+        // Heuristic: preserve sections that look narrative even if they contain links.
+        let sentenceIndicators = [". ", "? ", "! ", "; "]
+        let hasSentenceLikeFlow = sentenceIndicators.contains { text.contains($0) }
+        return text.count > 900 || hasSentenceLikeFlow
     }
     
     private func extractComments() throws -> [(author: String, date: String, content: String)] {
