@@ -210,6 +210,61 @@ final class ReadabilityFixtureTests: XCTestCase {
         XCTAssertFalse(text.contains("Advertisement"))
     }
 
+    func testPreservesConclusionWhileTrimmingTailReadMoreCluster() throws {
+        let html = try Self.loadFixture(named: "article_tail_noise")
+        let readability = try Readability(html: html)
+        let data = try readability.extractReadabilityData(includeComments: false)
+
+        let text = data.text ?? ""
+        XCTAssertTrue(text.contains("Conclusion"))
+        XCTAssertTrue(text.contains("Final takeaways should remain visible"))
+        XCTAssertFalse(text.contains("Read More"))
+        XCTAssertFalse(text.contains("Suggested Story 1"))
+        XCTAssertFalse(text.contains("Suggested Story 4"))
+    }
+
+    func testRemovesMidArticleSponsorBlockButKeepsNarrativeAndImage() throws {
+        let html = try Self.loadFixture(named: "article_mid_sponsor")
+        let readability = try Readability(html: html)
+        let data = try readability.extractReadabilityData(includeComments: false)
+
+        let text = data.text ?? ""
+        let content = data.content ?? ""
+        XCTAssertTrue(text.contains("opening article paragraph"))
+        XCTAssertTrue(text.contains("article then resumes with relevant analysis"))
+        XCTAssertTrue(text.contains("closing paragraph"))
+        XCTAssertFalse(text.contains("Limited offer one"))
+        XCTAssertFalse(text.contains("Limited offer two"))
+        XCTAssertFalse(text.contains("Sponsored"))
+        XCTAssertTrue(content.contains("inline.jpg"))
+    }
+
+    func testRemovesLatestArticlesTailList() throws {
+        let html = try Self.loadFixture(named: "article_latest_articles")
+        let readability = try Readability(html: html)
+        let data = try readability.extractReadabilityData(includeComments: false)
+
+        let text = data.text ?? ""
+        XCTAssertTrue(text.contains("Main body paragraph"))
+        XCTAssertTrue(text.contains("Another article paragraph"))
+        XCTAssertFalse(text.contains("LATEST ARTICLES"))
+        XCTAssertFalse(text.contains("Latest Item 1"))
+        XCTAssertFalse(text.contains("Latest Item 4"))
+    }
+
+    func testRemovesTechradarPopularBoxRecirculation() throws {
+        let html = try Self.loadFixture(named: "article_techradar_popular_box")
+        let readability = try Readability(html: html)
+        let data = try readability.extractReadabilityData(includeComments: false)
+
+        let text = data.text ?? ""
+        XCTAssertTrue(text.contains("I drove the compact EV"))
+        XCTAssertTrue(text.contains("charging curve and software experience"))
+        XCTAssertFalse(text.contains("LATEST ARTICLES"))
+        XCTAssertFalse(text.contains("Popular Item 1"))
+        XCTAssertFalse(text.contains("Popular Item 3"))
+    }
+
     func testReadabilityDataPublicInitializer() {
         let data = ReadabilityData(
             title: "Sample Title",
