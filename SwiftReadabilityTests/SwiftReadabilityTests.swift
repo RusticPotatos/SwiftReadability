@@ -621,6 +621,112 @@ final class ReadabilityFixtureTests: XCTestCase {
         XCTAssertFalse(text.localizedCaseInsensitiveContains("false candidate more competitive"))
     }
 
+
+    // MARK: - Reader Output Cleanup Regression Tests
+
+    func testInlineAnchorTextIsPreservedInReaderText() throws {
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Inline Anchor Text Fixture</title>
+            <meta name="description" content="Synthetic fixture for preserving inline anchor text.">
+        </head>
+        <body>
+            <article class="article-content">
+                <h1>Inline Anchor Text Fixture</h1>
+                <p>The article references the <a href="/history">important historical background</a> and continues with surrounding prose.</p>
+                <p>Another paragraph mentions a <a href="/relaunch">major product relaunch</a> so inline link text remains part of the readable sentence.</p>
+                <p>The final paragraph confirms that links inside article copy should lose only unsafe attributes, not their visible text.</p>
+            </article>
+        </body>
+        </html>
+        """
+
+        let readability = try Readability(html: html)
+        let data = try readability.extractReadabilityData(includeComments: false)
+        let text = data.text ?? ""
+
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("important historical background"))
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("major product relaunch"))
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("links inside article copy should lose only unsafe attributes"))
+    }
+
+    func testReactMountNodesAreRemovedFromReaderOutput() throws {
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>React Mount Cleanup Fixture</title>
+            <meta name="description" content="Synthetic fixture for React mount cleanup.">
+        </head>
+        <body>
+            <article class="article-content">
+                <h1>React Mount Cleanup Fixture</h1>
+                <p>The article body should remain after empty React mount nodes are removed.</p>
+                <div data-react-class="StickyAd" data-react-props="{&quot;adId&quot;:&quot;tall&quot;}"></div>
+                <p>The second paragraph confirms extraction continues after a React ad mount point.</p>
+                <div data-react-class="ShoppableBlock" data-react-props="{}"></div>
+                <p>The final paragraph confirms empty React components do not remain in reader HTML.</p>
+            </article>
+        </body>
+        </html>
+        """
+
+        let readability = try Readability(html: html)
+        let data = try readability.extractReadabilityData(includeComments: false)
+        let text = data.text ?? ""
+        let content = data.content ?? ""
+
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("article body should remain"))
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("extraction continues after a React ad mount point"))
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("final paragraph confirms"))
+        XCTAssertFalse(content.contains("data-react-class"))
+        XCTAssertFalse(content.contains("data-react-props"))
+        XCTAssertFalse(content.contains("StickyAd"))
+        XCTAssertFalse(content.contains("ShoppableBlock"))
+    }
+
+    func testAdContainersInsideArticleAreRemovedFromReaderOutput() throws {
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Inline Ad Cleanup Fixture</title>
+            <meta name="description" content="Synthetic fixture for inline ad cleanup.">
+        </head>
+        <body>
+            <article class="article-content">
+                <h1>Inline Ad Cleanup Fixture</h1>
+                <p>The first article paragraph should remain before the inline advertisement.</p>
+                <div class="ad ad-block--interscrollerV2 mt-[30px] lg:hidden max-w-full text-center">
+                    <div class="htl-ad htlad-HOD_Article_Billboard_Pos2">Advertisement Slot</div>
+                </div>
+                <p>The second article paragraph should remain after the inline advertisement.</p>
+                <div class="article-content-right">
+                    <div data-react-class="StickyAd" data-react-props="{&quot;adPageType&quot;:&quot;article&quot;}"></div>
+                </div>
+                <p>The final article paragraph confirms right-rail ad containers are removed.</p>
+            </article>
+        </body>
+        </html>
+        """
+
+        let readability = try Readability(html: html)
+        let data = try readability.extractReadabilityData(includeComments: false)
+        let text = data.text ?? ""
+        let content = data.content ?? ""
+
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("first article paragraph should remain"))
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("second article paragraph should remain"))
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("final article paragraph confirms"))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("Advertisement Slot"))
+        XCTAssertFalse(content.contains("ad-block--interscrollerV2"))
+        XCTAssertFalse(content.contains("htl-ad"))
+        XCTAssertFalse(content.contains("article-content-right"))
+        XCTAssertFalse(content.contains("StickyAd"))
+    }
+
     func testExtractsCommentsFromCommonPatterns() throws {
         let html = try Self.loadFixture(named: "article_comments")
         let readability = try Readability(html: html)

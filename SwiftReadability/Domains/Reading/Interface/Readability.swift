@@ -159,6 +159,8 @@ public class Readability {
         """
 
         static let knownRecirculation = ".popular-box, .popular-box-slice, .trending, .trending__wrapper, .trending-bar-container, .post-gallery, [class*=post-gallery], #slice-container-popularBox, #slice-container-trendingbar, [data-mrf-recirculation], [data-testid='trending-item']"
+        static let reactMounts = "[data-react-class], [data-react-props]"
+        static let adContainers = ".ad, [class*=ad-block], [class*=htl-ad], [class*=htlad-], .article-content-right"
 
         static let shareButtons = "[aria-label*='share'], [aria-label*='Share']"
         static let noiseMarkers = "h1, h2, h3, h4, h5, h6, p, div"
@@ -191,6 +193,17 @@ public class Readability {
         static let removableClassTokens = [
             "post-gallery"
         ]
+
+        static let positiveClassWeightTokens = [
+            "article", "body", "content", "entry", "hentry", "main", "page", "post", "story", "text"
+        ]
+
+        static let negativeClassWeightTokens = [
+            "ad", "banner", "breadcrumb", "combx", "comment", "community", "cover-wrap",
+            "disqus", "footer", "gdpr", "header", "legends", "menu", "modal", "nav",
+            "promo", "related", "remark", "replies", "rss", "share", "shoutbox",
+            "sidebar", "skyscraper", "sponsor", "supplemental", "widget"
+        ]
     }
     
     // MARK: - Initialization
@@ -217,7 +230,6 @@ public class Readability {
         // TODO: Gate cleanup steps with flags (stripUnlikelies, cleanConditionally) to honor public API.
         try removeElementsWithRoles()
         try removeInvisibleElements()
-        try removeShortLinks()
     }
     
     // MARK: - Public API
@@ -282,29 +294,51 @@ public class Readability {
         default:
             break
         }
-        
-        // (Optional) If flag is set, adjust score based on class names.
+
+        // (Optional) If flag is set, adjust score based on class/id hints.
         if flags.contains(.weightClasses) {
-            let className = try element.className()
-            if className.lowercased().contains("article") {
-                score += 10
-            }
-            if className.lowercased().contains("comment") {
-                score -= 10
-            }
+            score += classWeight(for: element)
         }
-        
+
         let text = try element.text()
         // Boost score for commas (as a proxy for sentence complexity).
         score += Double(text.split(separator: ",").count)
         // Add up to 3 extra points for every 100 characters.
         score += Double(min(text.count / 100, 3))
-        
+
         // Subtract score based on link density.
         let linkDensity = try computeLinkDensity(for: element)
         score *= (1.0 - linkDensity)
-        
+
         return score
+    }
+
+    private func classWeight(for element: Element) -> Double {
+        let classAndId = elementClassAndIdText(element)
+        guard classAndId.isEmpty == false else { return 0 }
+
+        var weight = 0.0
+        if containsAnyClassWeightToken(CleanupTerm.positiveClassWeightTokens, in: classAndId) {
+            weight += 10.0
+        }
+        if containsAnyClassWeightToken(CleanupTerm.negativeClassWeightTokens, in: classAndId) {
+            weight -= 10.0
+        }
+        return weight
+    }
+
+    private func elementClassAndIdText(_ element: Element) -> String {
+        let className = ((try? element.className()) ?? "").lowercased()
+        let idName = element.id().lowercased()
+        return [className, idName]
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
+    }
+
+    private func containsAnyClassWeightToken(_ tokens: [String], in text: String) -> Bool {
+        tokens.contains { token in
+            text.contains(token)
+        }
     }
     
     /// Computes the link density (ratio of text in links vs. total text) of an element.
@@ -423,14 +457,18 @@ public class Readability {
         }
     }
     
-    /// Remove <a> elements whose text (trimmed) is shorter than 20 characters.
+    /// Unwraps short links while preserving visible text.
+    ///
+    /// This is intentionally not part of the initial document cleanup because removing
+    /// links before article cleanup destroys link-density signals used to detect
+    /// recommendation, sponsor, and read-more clusters.
     private func removeShortLinks() throws {
         let links = try document.select("a")
         for link in links.array() {
             let text = try link.text().trimmingCharacters(in: .whitespacesAndNewlines)
             // If the text is too short and does not seem to be a meaningful sentence, remove the link.
             if text.count > 0 && text.count < 20 {
-                // TODO: Consider unwrapping links instead of removing to preserve inline text.
+                try link.before(text)
                 try link.remove()
             }
         }
@@ -512,6 +550,8 @@ public class Readability {
         [
             CleanupRule(name: "lazyLoadedImages", apply: normalizeLazyLoadedImages(in:)),
             CleanupRule(name: "knownRecirculationSelectors", apply: removeKnownRecirculationSelectors(in:)),
+            CleanupRule(name: "reactMountNodes", apply: removeReactMountNodes(in:)),
+            CleanupRule(name: "adContainers", apply: removeAdContainers(in:)),
             CleanupRule(name: "noiseClassTokens", apply: removeNoiseClassTokens(in:)),
             CleanupRule(name: "shareAndCommentElements", apply: removeShareAndCommentElements(in:)),
             CleanupRule(name: "highLinkDensityUtilityBlocks", apply: removeHighLinkDensityUtilityBlocks(in:)),
@@ -600,6 +640,14 @@ public class Readability {
 
     private func removeKnownRecirculationSelectors(in root: Element) throws {
         try root.select(CleanupSelector.knownRecirculation).remove()
+    }
+
+    private func removeReactMountNodes(in root: Element) throws {
+        try root.select(CleanupSelector.reactMounts).remove()
+    }
+
+    private func removeAdContainers(in root: Element) throws {
+        try root.select(CleanupSelector.adContainers).remove()
     }
 
     private func removeNoiseClassTokens(in root: Element) throws {
