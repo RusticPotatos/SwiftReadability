@@ -153,10 +153,45 @@ public class Readability {
         let apply: (Element) throws -> Void
     }
 
-    // Updated unwantedSelectors to include many of Firefox’s unlikely candidates plus common overlays.
-    private let unwantedSelectors = """
-    header, nav, footer, aside, .advertisement, .sponsored, .subscribe, .related, .breadcrumbs, .combx, .community, .cover-wrap, .disqus, .extra, .gdpr, .legends, .menu, .remark, .replies, .rss, .shoutbox, .sidebar, .skyscraper, .social, .sponsor, .supplemental, .ad-break, .agegate, .pagination, .pager, .popup, .yom-remote, .newsletter, .cookie, .cookie-banner, .modal, .overlay, .promo, .trending, .signup, .cta, .outbrain, .taboola, .popular-box, .trending-bar-container, [data-mrf-recirculation], [data-component='header'], [data-component='footer']
-    """
+    private enum CleanupSelector {
+        static let unwanted = """
+        header, nav, footer, aside, .advertisement, .sponsored, .subscribe, .related, .breadcrumbs, .combx, .community, .cover-wrap, .disqus, .extra, .gdpr, .legends, .menu, .remark, .replies, .rss, .shoutbox, .sidebar, .skyscraper, .social, .sponsor, .supplemental, .ad-break, .agegate, .pagination, .pager, .popup, .yom-remote, .newsletter, .cookie, .cookie-banner, .modal, .overlay, .promo, .trending, .signup, .cta, .outbrain, .taboola, .popular-box, .trending-bar-container, [data-mrf-recirculation], [data-component='header'], [data-component='footer']
+        """
+
+        static let knownRecirculation = ".popular-box, .popular-box-slice, .trending, .trending__wrapper, .trending-bar-container, .post-gallery, [class*=post-gallery], #slice-container-popularBox, #slice-container-trendingbar, [data-mrf-recirculation], [data-testid='trending-item']"
+
+        static let shareButtons = "[aria-label*='share'], [aria-label*='Share']"
+        static let noiseMarkers = "h1, h2, h3, h4, h5, h6, p, div"
+        static let utilityBlocks = "ul, ol, nav, section, div"
+    }
+
+    private enum CleanupTerm {
+        static let noiseKeywords = [
+            "recommended", "recommended stories", "related", "related stories", "more stories",
+            "read more", "you may also like", "you might also like", "sponsored", "sponsored content",
+            "advertisement", "newsletter", "sign up", "signup", "subscribe", "popular stories",
+            "latest articles", "latest stories", "latest news", "latest posts", "recent articles",
+            "more from", "from around the web", "trending now", "trending", "popular", "top stories",
+            "images from this post"
+        ]
+
+        static let markerNoise = [
+            "advertisement", "recommended", "recommended stories", "related stories", "related",
+            "more stories", "sponsored", "read more", "newsletter", "subscribe", "sign up",
+            "latest articles", "latest stories", "latest news", "latest posts", "recent articles",
+            "top stories", "trending now", "trending", "popular", "images from this post"
+        ]
+
+        static let recirculationTokens = [
+            "related", "recommended", "recirculation", "latest", "top-stories", "topstories",
+            "trending", "read-more", "readmore", "more-from", "morefrom", "popular",
+            "newsletter", "subscribe", "promo", "outbrain", "taboola", "post-gallery"
+        ]
+
+        static let removableClassTokens = [
+            "post-gallery"
+        ]
+    }
     
     // MARK: - Initialization
     /// Creates a Readability extractor from raw HTML.
@@ -178,7 +213,7 @@ public class Readability {
         self.verboseLogging = verboseLogging
 
         // Initial cleanup passes to simplify later heuristics.
-        try self.document.select(unwantedSelectors).remove()
+        try self.document.select(CleanupSelector.unwanted).remove()
         // TODO: Gate cleanup steps with flags (stripUnlikelies, cleanConditionally) to honor public API.
         try removeElementsWithRoles()
         try removeInvisibleElements()
@@ -475,7 +510,9 @@ public class Readability {
     
     private func buildCleanupRules() -> [CleanupRule] {
         [
+            CleanupRule(name: "lazyLoadedImages", apply: normalizeLazyLoadedImages(in:)),
             CleanupRule(name: "knownRecirculationSelectors", apply: removeKnownRecirculationSelectors(in:)),
+            CleanupRule(name: "noiseClassTokens", apply: removeNoiseClassTokens(in:)),
             CleanupRule(name: "shareAndCommentElements", apply: removeShareAndCommentElements(in:)),
             CleanupRule(name: "highLinkDensityUtilityBlocks", apply: removeHighLinkDensityUtilityBlocks(in:)),
             CleanupRule(name: "noiseMarkers", apply: removeNoiseMarkers(in:)),
@@ -483,6 +520,73 @@ public class Readability {
         ]
     }
     
+    /// Converts common lazy-loading image attributes into normal renderable attributes.
+    private func normalizeLazyLoadedImages(in root: Element) throws {
+        let images = try root.select("img")
+        for image in images.array() {
+            let currentSrc = try image.attr("src").trimmingCharacters(in: .whitespacesAndNewlines)
+            let lazySrc = try image.attr("data-src").trimmingCharacters(in: .whitespacesAndNewlines)
+            let lazyOriginal = try image.attr("data-original").trimmingCharacters(in: .whitespacesAndNewlines)
+            let lazySrcset = try image.attr("data-srcset").trimmingCharacters(in: .whitespacesAndNewlines)
+            let lazySet = try image.attr("data-lazy-srcset").trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if currentSrc.isEmpty {
+                if lazySrc.isEmpty == false {
+                    try image.attr("src", lazySrc)
+                } else if lazyOriginal.isEmpty == false {
+                    try image.attr("src", lazyOriginal)
+                } else if lazySrcset.isEmpty == false, let firstSrc = firstImageURL(fromSrcset: lazySrcset) {
+                    try image.attr("src", firstSrc)
+                } else if lazySet.isEmpty == false, let firstSrc = firstImageURL(fromSrcset: lazySet) {
+                    try image.attr("src", firstSrc)
+                }
+            }
+
+            let currentSrcset = try image.attr("srcset").trimmingCharacters(in: .whitespacesAndNewlines)
+            if currentSrcset.isEmpty {
+                if lazySrcset.isEmpty == false {
+                    try image.attr("srcset", lazySrcset)
+                } else if lazySet.isEmpty == false {
+                    try image.attr("srcset", lazySet)
+                }
+            }
+
+            try image.removeAttr("data-src")
+            try image.removeAttr("data-srcset")
+            try image.removeAttr("data-original")
+            try image.removeAttr("data-lazy-src")
+            try image.removeAttr("data-lazy-srcset")
+
+            let className = try image.className()
+            let cleanedClasses = className
+                .split(separator: " ")
+                .map(String.init)
+                .filter { cssClass in
+                    let lower = cssClass.lowercased()
+                    return lower != "lazyload" && lower != "lazyloaded" && lower != "lazy"
+                }
+
+            if cleanedClasses.isEmpty {
+                try image.removeAttr("class")
+            } else {
+                try image.attr("class", cleanedClasses.joined(separator: " "))
+            }
+        }
+    }
+
+    private func firstImageURL(fromSrcset srcset: String) -> String? {
+        srcset
+            .components(separatedBy: ",")
+            .map { candidate in
+                candidate
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .split(separator: " ")
+                    .first
+                    .map(String.init) ?? ""
+            }
+            .first { $0.isEmpty == false }
+    }
+
     private func removeShareAndCommentElements(in root: Element) throws {
         let allElements = try root.select("*")
         for el in allElements.array().reversed() {
@@ -490,18 +594,41 @@ public class Readability {
                 try el.remove()
             }
         }
-        let shareButtons = try root.select("[aria-label*='share'], [aria-label*='Share']")
+        let shareButtons = try root.select(CleanupSelector.shareButtons)
         try shareButtons.remove()
     }
 
     private func removeKnownRecirculationSelectors(in root: Element) throws {
-        let selectors = ".popular-box, .popular-box-slice, .trending, .trending__wrapper, .trending-bar-container, #slice-container-popularBox, #slice-container-trendingbar, [data-mrf-recirculation], [data-testid='trending-item']"
-        try root.select(selectors).remove()
+        try root.select(CleanupSelector.knownRecirculation).remove()
+    }
+
+    private func removeNoiseClassTokens(in root: Element) throws {
+        let noiseTokens = CleanupTerm.removableClassTokens
+
+        let elements = try root.select("*[class]").array() + [root]
+        for element in elements {
+            let className = try element.className()
+            guard className.isEmpty == false else { continue }
+
+            let cleanedClasses = className
+                .split(separator: " ")
+                .map(String.init)
+                .filter { cssClass in
+                    let lower = cssClass.lowercased()
+                    return noiseTokens.contains(where: { lower.contains($0) }) == false
+                }
+
+            if cleanedClasses.isEmpty {
+                try element.removeAttr("class")
+            } else {
+                try element.attr("class", cleanedClasses.joined(separator: " "))
+            }
+        }
     }
 
     /// Removes blocks that are likely nav/related lists based on high link density and low text content.
     private func removeHighLinkDensityUtilityBlocks(in root: Element) throws {
-        let candidates = try root.select("ul, ol, nav, section, div")
+        let candidates = try root.select(CleanupSelector.utilityBlocks)
         for el in candidates.array().reversed() {
             let text = try el.text()
             let textLength = text.count
@@ -538,8 +665,7 @@ public class Readability {
 
     /// Removes headings or small paragraphs that are obvious noise markers.
     private func removeNoiseMarkers(in root: Element) throws {
-        let selectors = "h1, h2, h3, h4, h5, h6, p, div"
-        let elements = try root.select(selectors).array()
+        let elements = try root.select(CleanupSelector.noiseMarkers).array()
         for el in elements.reversed() {
             let text = try el.text().trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if text.isEmpty { continue }
@@ -600,24 +726,11 @@ public class Readability {
     }
 
     private func containsNoiseKeyword(_ text: String) -> Bool {
-        let terms = [
-            "recommended", "recommended stories", "related", "related stories", "more stories",
-            "read more", "you may also like", "you might also like", "sponsored", "sponsored content",
-            "advertisement", "newsletter", "sign up", "signup", "subscribe", "popular stories",
-            "latest articles", "latest stories", "latest news", "latest posts", "recent articles",
-            "more from", "from around the web", "trending now", "trending", "popular", "top stories"
-        ]
-        return terms.contains { text.contains($0) }
+        CleanupTerm.noiseKeywords.contains { text.contains($0) }
     }
 
     private func isMarkerNoiseText(_ text: String) -> Bool {
-        let markerTerms = [
-            "advertisement", "recommended", "recommended stories", "related stories", "related",
-            "more stories", "sponsored", "read more", "newsletter", "subscribe", "sign up",
-            "latest articles", "latest stories", "latest news", "latest posts", "recent articles",
-            "top stories", "trending now", "trending", "popular"
-        ]
-        return markerTerms.contains(text) || markerTerms.contains { text.hasPrefix($0 + ":") }
+        CleanupTerm.markerNoise.contains(text) || CleanupTerm.markerNoise.contains { text.hasPrefix($0 + ":") }
     }
 
     private func isLikelyRecirculationElement(_ element: Element) throws -> Bool {
@@ -626,12 +739,7 @@ public class Readability {
         let attrs = ((try? element.attr("data-mrf-recirculation")) ?? "") + " " + ((try? element.attr("data-testid")) ?? "")
         let lowerAttrs = attrs.lowercased()
         if lower.isEmpty && lowerAttrs.isEmpty { return false }
-        let tokens = [
-            "related", "recommended", "recirculation", "latest", "top-stories", "topstories",
-            "trending", "read-more", "readmore", "more-from", "morefrom", "popular",
-            "newsletter", "subscribe", "promo", "outbrain", "taboola"
-        ]
-        return tokens.contains(where: { lower.contains($0) || lowerAttrs.contains($0) })
+        return CleanupTerm.recirculationTokens.contains { lower.contains($0) || lowerAttrs.contains($0) }
     }
 
     private func containsLikelyArticleText(_ text: String) -> Bool {

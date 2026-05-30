@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="description" content="Synthetic fixture for split article modules, lazy images, ads, and post galleries.">
+  <meta property="og:title" content="Synthetic Split Module Article">
+  <meta property="og:image" content="https://example.com/images/split-module-hero.jpg">
+  <title>Synthetic Split Module Article - Example Watch Journal</title>
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "NewsArticle",
+  "headline": "Synthetic Split Module Article",
+  "image": ["https://example.com/images/split-module-hero.jpg"],
+  "author": {"@type": "Person", "name": "Fixture Writer"},
+  "datePublished": "2026-05-29T10:00:02-04:00",
+  "publisher": {"@type": "Organization", "name": "Example Watch Journal"}
+}
+  </script>
+</head>
+<body>
+  <article class="post-preview">
+    <header class="articleHeader">
+      <h1>Synthetic Split Module Article</h1>
+      <div class="news-date" datetime="2026-05-29T10:00:02-04:00">May 29, 2026</div>
+      <div class="author-link">Words By <a href="/author/fixture-writer">Fixture Writer</a></div>
+    </header>
+
+    <div class="article-wrapper pb0 pt0">
+      <div class="post-content">
+        <div class="post-content-module">
+          <p>The first split content module introduces the article and gives the parser enough body text to select this as the main story.</p>
+          <p>This paragraph keeps the first module article-like before the first lazy-loaded image.</p>
+          <p>This synthetic fixture intentionally contains a larger body of text so readability scoring behaves more like a real-world article instead of a minimal test case.</p>
+          <p>Production articles often include multiple introductory paragraphs, contextual information, and supporting details before the first image appears in the content stream.</p>
+          <p>The goal of this fixture is not to test article quality but to ensure extraction logic remains stable when content is spread across several sections and interrupted by non-article elements.</p>
+          <p>Additional narrative text also helps prevent regressions where scoring heuristics incorrectly favor nearby containers with less meaningful content.</p>
+          <p><a href="https://example.com/images/split-module-watch-01.jpg"><img class="aligncenter size-full" alt="Synthetic first split module watch" data-src="https://example.com/images/split-module-watch-01.jpg"></a></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="article-ad">
+      <div class="section-header-title">Advertisement</div>
+    </div>
+
+    <div class="article-wrapper pb0 pt0">
+      <div class="post-content">
+        <div class="post-content-module">
+          <p>The second split content module continues the article after an advertisement break and should remain part of the reader output.</p>
+          <p>More synthetic body copy confirms the parser should merge split article modules instead of stopping early.</p>
+          <p>Many publishing platforms inject advertisements, newsletter prompts, sponsorship disclosures, or recommendation widgets between content blocks.</p>
+          <p>Reader extraction should recognize that the surrounding article continues after these interruptions and should preserve the later sections.</p>
+          <p>This synthetic section represents the middle portion of a longer article where the primary narrative continues after an unrelated interruption.</p>
+          <p>If extraction stops here, the resulting output would appear complete at first glance while silently dropping meaningful content from the remainder of the article.</p>
+          <p><a href="https://example.com/images/split-module-watch-02.jpg"><img class="aligncenter size-full" alt="Synthetic second split module watch" data-src="https://example.com/images/split-module-watch-02.jpg"></a></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="article-wrapper pb0 pt0">
+      <div class="post-content">
+        <div class="post-content-module">
+          <p>Final split content module closes the article and proves that the whole article survived extraction.</p>
+          <p>The closing synthetic paragraph should appear before the post-article image collection begins.</p>
+          <p>The final section exists to verify that later content remains attached to the extracted article even when visually similar modules follow afterward.</p>
+          <p>Real-world sites frequently place galleries, related stories, author biographies, affiliate links, and recommendation engines immediately after the article body.</p>
+          <p>Those elements may share classes, wrappers, and styling conventions with the article itself, making boundary detection more difficult.</p>
+          <p>A robust reader implementation should preserve the complete article while excluding unrelated post-content experiences that are not part of the authored story.</p>
+          <p>This concluding paragraph provides additional text volume so the fixture more accurately resembles the size and structure of a production article.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="post-content-module post-gallery full-bleed">
+      <div class="section-header-title">Images from this post:</div>
+    </div>
+
+    <div class="post-content-module bg-hash post-gallery full-bleed">
+      <div class="item">
+        <a href="https://example.com/images/gallery-01.jpg">
+          <div class="bg-item" data-bg="https://example.com/images/gallery-01-thumb.jpg"></div>
+        </a>
+      </div>
+    </div>
+  </article>
+</body>
+</html>

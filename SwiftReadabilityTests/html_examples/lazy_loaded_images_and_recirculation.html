@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Synthetic fixture for testing lazy-loaded article images and recirculation cleanup.">
+  <meta property="og:site_name" content="Example Watch Journal">
+  <meta property="og:title" content="Synthetic Watch Roundup: A Test Watch, A Calendar Watch, And A Travel Clock">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://example.com/articles/synthetic-watch-roundup">
+  <meta property="og:image" content="https://example.com/images/synthetic-hero.jpg">
+  <meta property="og:description" content="Synthetic fixture for testing lazy-loaded article images and recirculation cleanup.">
+  <title>Synthetic Watch Roundup: A Test Watch, A Calendar Watch, And A Travel Clock - Example Watch Journal</title>
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "NewsArticle",
+  "headline": "Synthetic Watch Roundup: A Test Watch, A Calendar Watch, And A Travel Clock",
+  "image": ["https://example.com/images/synthetic-hero.jpg"],
+  "author": {"@type": "Person", "name": "Fixture Author"},
+  "datePublished": "2026-05-29T11:00:00-04:00",
+  "dateModified": "2026-05-29T11:02:12-04:00",
+  "publisher": {"@type": "Organization", "name": "Example Watch Journal"},
+  "mainEntityOfPage": "https://example.com/articles/synthetic-watch-roundup"
+}
+  </script>
+</head>
+<body>
+  <header>
+    <nav>Navigation noise that should not be selected as the article.</nav>
+  </header>
+  <main>
+    <article class="article-content">
+      <h1>Synthetic Watch Roundup: A Test Watch, A Calendar Watch, And A Travel Clock</h1>
+      <p class="byline">By Fixture Author</p>
+      <time datetime="2026-05-29T11:00:00-04:00">May 29, 2026</time>
+      <p>This synthetic article exists only to test readability extraction behavior. It intentionally mimics a production article structure without copying any original article text.</p>
+      <p>The first section introduces a fictional watch and gives the parser enough paragraph text to identify this node as article content.</p>
+      <p>This fixture includes additional neutral body copy so the readability scorer evaluates a realistic article-sized container instead of a minimal snippet.</p>
+      <p>Many production articles place images, captions, and related-story modules between sections, which can make article boundaries harder to detect.</p>
+      <p>The synthetic text is intentionally generic and does not describe any real article, product launch, review, or publication-specific reporting.</p>
+      <p>Its purpose is to preserve the structural problem that caused the regression while avoiding copyrighted source material.</p>
+      <figure>
+        <img
+          class="lazyload article-image"
+          alt="Synthetic first watch"
+          data-src="https://example.com/images/synthetic-watch-01.jpg"
+          data-srcset="https://example.com/images/synthetic-watch-01.jpg 1200w, https://example.com/images/synthetic-watch-01-small.jpg 600w"
+          sizes="(min-width: 800px) 800px, 100vw">
+        <figcaption>First synthetic lazy-loaded image.</figcaption>
+      </figure>
+      <p>This sentence marks the currently observed cutoff location in the original failing page. The extracted article must continue after this point.</p>
+      <aside class="read-this-next related-articles recirculation-module">
+        <h2>Read this Next</h2>
+        <a href="/articles/related-story">A related story that should not appear in reader output</a>
+      </aside>
+      <h2>Calendar Watch Section</h2>
+      <p>The Calendar Watch section appears after the recirculation module and proves the parser did not stop too early.</p>
+      <p>Additional synthetic body copy keeps this later section article-like instead of looking like sidebar or footer noise.</p>
+      <p>This middle section confirms that the parser should continue collecting article content after the recirculation module has been removed.</p>
+      <p>Without enough text after the interruption, a test could pass even if the extractor silently dropped meaningful later content.</p>
+      <p>The section therefore includes several additional paragraphs that make the continuation behavior explicit and measurable.</p>
+      <p>Keeping the copy synthetic ensures the public fixture remains safe to distribute while still exercising the real extraction behavior.</p>
+      <figure>
+        <img
+          class="lazyload article-image"
+          alt="Synthetic calendar watch"
+          data-src="https://example.com/images/synthetic-watch-02.jpg"
+          data-srcset="https://example.com/images/synthetic-watch-02.jpg 1200w, https://example.com/images/synthetic-watch-02-small.jpg 600w">
+        <figcaption>Second synthetic lazy-loaded image.</figcaption>
+      </figure>
+      <h2>Travel Clock Section</h2>
+      <p>The Travel Clock section is intentionally late in the article so tests can detect premature truncation.</p>
+      <p>The final synthetic paragraph confirms that the entire article body survived readability parsing.</p>
+      <p>The closing section gives the article a clear ending that should remain present in reader text after cleanup is complete.</p>
+      <p>Footer navigation, unrelated links, and other page chrome should still be excluded from the extracted reader output.</p>
+      <p>This final line provides one more stable assertion target if future tests need to verify that the article was not truncated.</p>
+    </article>
+  </main>
+  <footer>
+    Footer noise that should not be selected as article content.
+  </footer>
+</body>
+</html>
